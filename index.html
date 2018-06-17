@@ -1,1 +1,285 @@
-hello world
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="UTF-8">
+    <title>ray-tracer</title>
+    <meta name="description" content="An implementation of a ray tracer."/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#157878">
+    <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" href="assets/css/style.css">
+  </head>
+  <body>
+    <section class="page-header">
+      <h1 class="project-name">ray-tracer</h1>
+      <h2 class="project-tagline">An implementation of a ray tracer.</h2>
+
+        <a href="https://github.com/codyrhoads/ray-tracer" class="btn">View on GitHub</a>
+
+
+    </section>
+
+    <section class="main-content">
+      <h1 id="ray-tracer">ray-tracer</h1>
+
+<h2 id="final-project-info">Final Project Info</h2>
+
+<h3 id="final-feature">Final Feature</h3>
+<p>For my final feature I chose to implement ambient occlusion. I wanted to add some feature that added more realism to shading; in particular, I felt that intersecting objects were lacking in the realism department. There wasn’t any indication of a transition between the two objects. AO helped to fix that issue by darkening the area where the objects intersect.</p>
+
+<p>To implement this, I refactored my shadow calculation code to allow for objects to be in partial shadow. This is represented by a “shadow factor” variable, which is a float between 0 and 1. 0 is entirely in shadow, while 1 is entirely in light. When testing the color of a point, I send feeler rays from that point to see how occluded it is. If a ray doesn’t intersect any object OR if it intersects an object that is far away from the point, then I add 1/(total amount of feeler rays) to the shadow factor variable. Over the course of many feeler rays, the shadow factor begins to reflect how dark the point should be. For example, if the point is close to the intersection of two objects, then many feeler rays would have intersections close to their origins, making the shadow factor variable closer to 0. This shadow factor is then multiplied by the diffuse and specular components. Thus, an occluded point will have a smaller shadow factor, and therefore have reduced diffuse and specular shading. This results in darkened areas close to the intersections of objects to reflect the fact that these areas are occluded and don’t receive as much light.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>With Ambient Occlusion</th>
+      <th>Without Ambient Occlusion</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><img src="screenshots/ao1WithAO.png" alt="ao_1.pov with AO" /></td>
+      <td><img src="screenshots/ao1WithoutAO.png" alt="ao_1.pov without AO" /></td>
+    </tr>
+    <tr>
+      <td><img src="screenshots/ao2WithAO.png" alt="ao_2.pov with AO" /></td>
+      <td><img src="screenshots/ao2WithoutAO.png" alt="ao_2.pov without AO" /></td>
+    </tr>
+    <tr>
+      <td><img src="screenshots/ao3WithAO.png" alt="ao_3.pov with AO" /></td>
+      <td><img src="screenshots/ao3WithoutAO.png" alt="ao_3.pov without AO" /></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 id="resources">Resources</h3>
+<p>I used the provided notes on ambient occlusion, as well as previous knowledge about the implementation of Monte Carlo global illumination.</p>
+
+<h3 id="software-design-implementation">Software Design Implementation</h3>
+<p>Initially, my FileParser.cpp file was incredibly long and redundant. Parsing a variable typically only needed a few steps, but these steps had to be rewritten many times for every different variable. This code was then repeated for every different type of parsed object, leading to lengthy, repetitive methods that were difficult to read.</p>
+
+<p>To fix this issue, I realized that variables inside pov files could only be one of three types: a single float, a vec3, or a vec4. Knowing this, I was able to simplify my code by creating three generic methods that each specialized in parsing one of these types. These methods are:</p>
+
+<ul>
+  <li>findAndSetSingleValueParameter()</li>
+  <li>findAndSetVec3Parameter()</li>
+  <li>findAndSetVec4Parameter()</li>
+</ul>
+
+<p>Other methods were also added to abstract the removal of whitespace, comments, and newlines, as well as handle the process of selecting the next segment to parse. All of these methods greatly reduced the length of FileParser.cpp and increased legibility. Separating functionality into several methods also made it easier to debug issues with my parser program.</p>
+
+<p>To demonstrate how significant this refactoring was, I’ve included my code for parsing a sphere prior to refactoring and from my current version.</p>
+
+<h4 id="prior-to-refactoring">Prior to Refactoring</h4>
+<div class="language-javascript highlighter-rouge"><pre class="highlight"><code><span class="k">void</span> <span class="nx">FileParser</span><span class="err">::</span><span class="nx">parseSphere</span><span class="p">(</span><span class="nx">ifstream</span> <span class="o">&amp;</span><span class="nx">file</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="nx">vec3</span> <span class="nx">center</span> <span class="o">=</span> <span class="nx">vec3</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+    <span class="nx">vec3</span> <span class="nx">color</span> <span class="o">=</span> <span class="nx">vec3</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+    <span class="kr">float</span> <span class="nx">radius</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="nx">ambient</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="nx">diffuse</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="nx">specular</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="nx">roughness</span> <span class="o">=</span> <span class="mf">0.3</span><span class="p">;</span>
+    <span class="kr">float</span> <span class="nx">metallic</span> <span class="o">=</span> <span class="mf">0.1</span><span class="p">,</span> <span class="nx">ior</span> <span class="o">=</span> <span class="mf">1.6</span><span class="p">;</span>
+    <span class="nx">size_t</span> <span class="nx">found</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="nx">end</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="nx">string</span> <span class="nx">segment</span> <span class="o">=</span> <span class="s2">""</span><span class="p">,</span> <span class="nx">temp</span><span class="p">;</span>
+
+    <span class="c1">// Since there are subsections denoted with curly braces, we have to search</span>
+    <span class="c1">// for the '}' without a corresponding '{'. This means that it is the end</span>
+    <span class="c1">// of the sphere information.</span>
+    <span class="nx">getline</span><span class="p">(</span><span class="nx">file</span><span class="p">,</span> <span class="nx">temp</span><span class="p">,</span> <span class="s1">'}'</span><span class="p">);</span>
+    <span class="k">while</span> <span class="p">(</span><span class="nx">count</span><span class="p">(</span><span class="nx">temp</span><span class="p">.</span><span class="nx">begin</span><span class="p">(),</span> <span class="nx">temp</span><span class="p">.</span><span class="nx">end</span><span class="p">(),</span> <span class="s1">'{'</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">temp</span><span class="p">.</span><span class="nx">append</span><span class="p">(</span><span class="s2">"}"</span><span class="p">);</span>
+        <span class="nx">segment</span><span class="p">.</span><span class="nx">append</span><span class="p">(</span><span class="nx">temp</span><span class="p">);</span>
+        <span class="nx">getline</span><span class="p">(</span><span class="nx">file</span><span class="p">,</span> <span class="nx">temp</span><span class="p">,</span> <span class="s1">'}'</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="nx">segment</span><span class="p">.</span><span class="nx">append</span><span class="p">(</span><span class="nx">temp</span><span class="p">);</span>
+
+    <span class="c1">// Remove all whitespace from the string.</span>
+    <span class="nx">segment</span><span class="p">.</span><span class="nx">erase</span><span class="p">(</span><span class="nx">remove</span><span class="p">(</span><span class="nx">segment</span><span class="p">.</span><span class="nx">begin</span><span class="p">(),</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">end</span><span class="p">(),</span> <span class="s1">' '</span><span class="p">),</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">end</span><span class="p">());</span>
+    <span class="c1">// Remove all newlines from the string.</span>
+    <span class="nx">segment</span><span class="p">.</span><span class="nx">erase</span><span class="p">(</span><span class="nx">remove</span><span class="p">(</span><span class="nx">segment</span><span class="p">.</span><span class="nx">begin</span><span class="p">(),</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">end</span><span class="p">(),</span> <span class="s1">'\n'</span><span class="p">),</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">end</span><span class="p">());</span>
+
+    <span class="nx">found</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="s2">"&lt;"</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">found</span> <span class="o">!=</span> <span class="nx">string</span><span class="err">::</span><span class="nx">npos</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Go to beginning of x value for center.</span>
+        <span class="nx">found</span> <span class="o">+=</span> <span class="nx">sizeof</span><span class="p">(</span><span class="s2">"&lt;"</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span>
+        <span class="nx">end</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="s2">","</span><span class="p">,</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">temp</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">substr</span><span class="p">(</span><span class="nx">found</span><span class="p">,</span> <span class="nx">end</span> <span class="o">-</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">center</span><span class="p">.</span><span class="nx">x</span> <span class="o">=</span> <span class="nx">atof</span><span class="p">(</span><span class="nx">temp</span><span class="p">.</span><span class="nx">c_str</span><span class="p">());</span>
+
+        <span class="c1">// Go to beginning of y value for center.</span>
+        <span class="nx">found</span> <span class="o">=</span> <span class="nx">end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+        <span class="nx">end</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="s2">","</span><span class="p">,</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">temp</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">substr</span><span class="p">(</span><span class="nx">found</span><span class="p">,</span> <span class="nx">end</span> <span class="o">-</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">center</span><span class="p">.</span><span class="nx">y</span> <span class="o">=</span> <span class="nx">atof</span><span class="p">(</span><span class="nx">temp</span><span class="p">.</span><span class="nx">c_str</span><span class="p">());</span>
+
+        <span class="c1">// Go to beginning of y value for center.</span>
+        <span class="nx">found</span> <span class="o">=</span> <span class="nx">end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+        <span class="nx">end</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="s2">"&gt;"</span><span class="p">,</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">temp</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">substr</span><span class="p">(</span><span class="nx">found</span><span class="p">,</span> <span class="nx">end</span> <span class="o">-</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">center</span><span class="p">.</span><span class="nx">z</span> <span class="o">=</span> <span class="nx">atof</span><span class="p">(</span><span class="nx">temp</span><span class="p">.</span><span class="nx">c_str</span><span class="p">());</span>
+    <span class="p">}</span>
+
+    <span class="nx">found</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="s2">","</span><span class="p">,</span> <span class="nx">end</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">found</span> <span class="o">!=</span> <span class="nx">string</span><span class="err">::</span><span class="nx">npos</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Go to beginning of radius.</span>
+        <span class="nx">found</span> <span class="o">+=</span> <span class="nx">sizeof</span><span class="p">(</span><span class="s2">","</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span>
+        <span class="nx">end</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find_first_not_of</span><span class="p">(</span><span class="s2">"0123456789."</span><span class="p">,</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">temp</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">substr</span><span class="p">(</span><span class="nx">found</span><span class="p">,</span> <span class="nx">end</span> <span class="o">-</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">radius</span> <span class="o">=</span> <span class="nx">atof</span><span class="p">(</span><span class="nx">temp</span><span class="p">.</span><span class="nx">c_str</span><span class="p">());</span>
+    <span class="p">}</span>
+
+    <span class="nx">found</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="s2">"colorrgb"</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">found</span> <span class="o">!=</span> <span class="nx">string</span><span class="err">::</span><span class="nx">npos</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Go to beginning of r value for color.</span>
+        <span class="nx">found</span> <span class="o">+=</span> <span class="nx">sizeof</span><span class="p">(</span><span class="s2">"colorrgb"</span><span class="p">);</span>
+        <span class="nx">end</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="s2">","</span><span class="p">,</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">temp</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">substr</span><span class="p">(</span><span class="nx">found</span><span class="p">,</span> <span class="nx">end</span> <span class="o">-</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">color</span><span class="p">.</span><span class="nx">x</span> <span class="o">=</span> <span class="nx">atof</span><span class="p">(</span><span class="nx">temp</span><span class="p">.</span><span class="nx">c_str</span><span class="p">());</span>
+
+        <span class="c1">// Go to beginning of g value for color.</span>
+        <span class="nx">found</span> <span class="o">=</span> <span class="nx">end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+        <span class="nx">end</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="s2">","</span><span class="p">,</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">temp</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">substr</span><span class="p">(</span><span class="nx">found</span><span class="p">,</span> <span class="nx">end</span> <span class="o">-</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">color</span><span class="p">.</span><span class="nx">y</span> <span class="o">=</span> <span class="nx">atof</span><span class="p">(</span><span class="nx">temp</span><span class="p">.</span><span class="nx">c_str</span><span class="p">());</span>
+
+        <span class="c1">// Go to beginning of b value for color.</span>
+        <span class="nx">found</span> <span class="o">=</span> <span class="nx">end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+        <span class="nx">end</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="s2">"&gt;"</span><span class="p">,</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">temp</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">substr</span><span class="p">(</span><span class="nx">found</span><span class="p">,</span> <span class="nx">end</span> <span class="o">-</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">color</span><span class="p">.</span><span class="nx">z</span> <span class="o">=</span> <span class="nx">atof</span><span class="p">(</span><span class="nx">temp</span><span class="p">.</span><span class="nx">c_str</span><span class="p">());</span>
+    <span class="p">}</span>
+
+    <span class="nx">found</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="s2">"ambient"</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">found</span> <span class="o">!=</span> <span class="nx">string</span><span class="err">::</span><span class="nx">npos</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Go to beginning of ambient factor.</span>
+        <span class="nx">found</span> <span class="o">+=</span> <span class="nx">sizeof</span><span class="p">(</span><span class="s2">"ambient"</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span>
+        <span class="nx">end</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find_first_not_of</span><span class="p">(</span><span class="s2">"0123456789."</span><span class="p">,</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">temp</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">substr</span><span class="p">(</span><span class="nx">found</span><span class="p">,</span> <span class="nx">end</span><span class="o">-</span><span class="nx">found</span><span class="p">);</span>
+        <span class="nx">ambient</span> <span class="o">=</span> <span class="nx">atof</span><span class="p">(</span><span class="nx">temp</span><span class="p">.</span><span class="nx">c_str</span><span class="p">());</span>
+    <span class="p">}</span>
+
+    <span class="nx">found</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="s2">"diffuse"</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">found</span> <span class="o">!=</span> <span class="nx">string</span><span class="err">::</span><span class="nx">npos</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Go to beginning of diffuse factor.</span>
+        <span class="nx">found</span> <span class="o">+=</span> <span class="nx">sizeof</span><span class="p">(</span><span class="s2">"diffuse"</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span>
+        <span class="nx">end</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find_first_not_of</span><span class="p">(</span><span class="s2">"0123456789."</span><span class="p">,</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">temp</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">substr</span><span class="p">(</span><span class="nx">found</span><span class="p">,</span> <span class="nx">end</span> <span class="o">-</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">diffuse</span> <span class="o">=</span> <span class="nx">atof</span><span class="p">(</span><span class="nx">temp</span><span class="p">.</span><span class="nx">c_str</span><span class="p">());</span>
+    <span class="p">}</span>
+
+    <span class="nx">found</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="s2">"specular"</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">found</span> <span class="o">!=</span> <span class="nx">string</span><span class="err">::</span><span class="nx">npos</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Go to beginning of specular factor.</span>
+        <span class="nx">found</span> <span class="o">+=</span> <span class="nx">sizeof</span><span class="p">(</span><span class="s2">"specular"</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span>
+        <span class="nx">end</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find_first_not_of</span><span class="p">(</span><span class="s2">"0123456789."</span><span class="p">,</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">temp</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">substr</span><span class="p">(</span><span class="nx">found</span><span class="p">,</span> <span class="nx">end</span> <span class="o">-</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">specular</span> <span class="o">=</span> <span class="nx">atof</span><span class="p">(</span><span class="nx">temp</span><span class="p">.</span><span class="nx">c_str</span><span class="p">());</span>
+    <span class="p">}</span>
+
+    <span class="nx">found</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="s2">"roughness"</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">found</span> <span class="o">!=</span> <span class="nx">string</span><span class="err">::</span><span class="nx">npos</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Go to beginning of roughness factor.</span>
+        <span class="nx">found</span> <span class="o">+=</span> <span class="nx">sizeof</span><span class="p">(</span><span class="s2">"roughness"</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span>
+        <span class="nx">end</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find_first_not_of</span><span class="p">(</span><span class="s2">"0123456789."</span><span class="p">,</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">temp</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">substr</span><span class="p">(</span><span class="nx">found</span><span class="p">,</span> <span class="nx">end</span> <span class="o">-</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">roughness</span> <span class="o">=</span> <span class="nx">atof</span><span class="p">(</span><span class="nx">temp</span><span class="p">.</span><span class="nx">c_str</span><span class="p">());</span>
+    <span class="p">}</span>
+
+    <span class="nx">found</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="s2">"metallic"</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">found</span> <span class="o">!=</span> <span class="nx">string</span><span class="err">::</span><span class="nx">npos</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Go to beginning of metallic factor.</span>
+        <span class="nx">found</span> <span class="o">+=</span> <span class="nx">sizeof</span><span class="p">(</span><span class="s2">"metallic"</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span>
+        <span class="nx">end</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find_first_not_of</span><span class="p">(</span><span class="s2">"0123456789."</span><span class="p">,</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">temp</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">substr</span><span class="p">(</span><span class="nx">found</span><span class="p">,</span> <span class="nx">end</span> <span class="o">-</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">metallic</span> <span class="o">=</span> <span class="nx">atof</span><span class="p">(</span><span class="nx">temp</span><span class="p">.</span><span class="nx">c_str</span><span class="p">());</span>
+    <span class="p">}</span>
+
+    <span class="nx">found</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="s2">"ior"</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">found</span> <span class="o">!=</span> <span class="nx">string</span><span class="err">::</span><span class="nx">npos</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// Go to beginning of ior factor.</span>
+        <span class="nx">found</span> <span class="o">+=</span> <span class="nx">sizeof</span><span class="p">(</span><span class="s2">"ior"</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span>
+        <span class="nx">end</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">find_first_not_of</span><span class="p">(</span><span class="s2">"0123456789."</span><span class="p">,</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">temp</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">substr</span><span class="p">(</span><span class="nx">found</span><span class="p">,</span> <span class="nx">end</span> <span class="o">-</span> <span class="nx">found</span><span class="p">);</span>
+        <span class="nx">ior</span> <span class="o">=</span> <span class="nx">atof</span><span class="p">(</span><span class="nx">temp</span><span class="p">.</span><span class="nx">c_str</span><span class="p">());</span>
+    <span class="p">}</span>
+
+    <span class="nx">shared_ptr</span><span class="o">&lt;</span><span class="nx">Sphere</span><span class="o">&gt;</span> <span class="nx">sphere</span> <span class="o">=</span> <span class="nx">make_shared</span><span class="o">&lt;</span><span class="nx">Sphere</span><span class="o">&gt;</span><span class="p">(</span><span class="nx">center</span><span class="p">,</span> <span class="nx">radius</span><span class="p">,</span> <span class="nx">color</span><span class="p">,</span>
+                                                    <span class="nx">ambient</span><span class="p">,</span> <span class="nx">diffuse</span><span class="p">,</span> <span class="nx">specular</span><span class="p">,</span>
+                                                    <span class="nx">roughness</span><span class="p">,</span> <span class="nx">metallic</span><span class="p">,</span> <span class="nx">ior</span><span class="p">);</span>
+    <span class="nx">objects</span><span class="p">.</span><span class="nx">push_back</span><span class="p">(</span><span class="nx">sphere</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+<h4 id="current-version">Current Version</h4>
+<div class="language-javascript highlighter-rouge"><pre class="highlight"><code><span class="k">void</span> <span class="nx">FileParser</span><span class="err">::</span><span class="nx">parseSphere</span><span class="p">(</span><span class="nx">ifstream</span> <span class="o">&amp;</span><span class="nx">file</span><span class="p">,</span> <span class="kr">const</span> <span class="kr">int</span> <span class="nx">ID</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="nx">vec3</span> <span class="nx">center</span> <span class="o">=</span> <span class="nx">vec3</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+    <span class="nx">vec3</span> <span class="nx">color</span> <span class="o">=</span> <span class="nx">vec3</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+    <span class="nx">vec4</span> <span class="nx">rgbf</span> <span class="o">=</span> <span class="nx">vec4</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+    <span class="kr">float</span> <span class="nx">radius</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="nx">ambient</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="nx">diffuse</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="nx">specular</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="nx">reflection</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="kr">float</span> <span class="nx">roughness</span> <span class="o">=</span> <span class="mf">0.3</span><span class="p">,</span> <span class="nx">metallic</span> <span class="o">=</span> <span class="mf">0.1</span><span class="p">,</span> <span class="nx">ior</span> <span class="o">=</span> <span class="mf">1.6</span><span class="p">;</span>
+    <span class="nx">mat4</span> <span class="nx">inverseModelMatrix</span> <span class="o">=</span> <span class="nx">mat4</span><span class="p">(</span><span class="mf">1.0</span><span class="p">);</span>
+    <span class="nx">size_t</span> <span class="nx">newStart</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="nx">bool</span> <span class="nx">hasFilter</span> <span class="o">=</span> <span class="kc">false</span><span class="p">;</span>
+
+    <span class="nx">string</span> <span class="nx">segment</span> <span class="o">=</span> <span class="nx">getNextSegment</span><span class="p">(</span><span class="nx">file</span><span class="p">);</span>
+
+    <span class="nx">removeNewlinesAndWhitespace</span><span class="p">(</span><span class="nx">segment</span><span class="p">);</span>
+
+    <span class="nx">newStart</span> <span class="o">=</span> <span class="nx">findAndSetVec3Parameter</span><span class="p">(</span><span class="nx">segment</span><span class="p">,</span> <span class="nx">center</span><span class="p">,</span> <span class="s2">"&lt;"</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+    <span class="nx">findAndSetSingleValueParameter</span><span class="p">(</span><span class="nx">segment</span><span class="p">,</span> <span class="nx">radius</span><span class="p">,</span> <span class="s2">","</span><span class="p">,</span> <span class="nx">newStart</span><span class="p">);</span>
+    <span class="nx">hasFilter</span> <span class="o">=</span> <span class="nx">findAndSetVec4Parameter</span><span class="p">(</span><span class="nx">segment</span><span class="p">,</span> <span class="nx">rgbf</span><span class="p">,</span> <span class="s2">"colorrgbf&lt;"</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="nx">hasFilter</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">findAndSetVec3Parameter</span><span class="p">(</span><span class="nx">segment</span><span class="p">,</span> <span class="nx">color</span><span class="p">,</span> <span class="s2">"colorrgb&lt;"</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="nx">findAndSetSingleValueParameter</span><span class="p">(</span><span class="nx">segment</span><span class="p">,</span> <span class="nx">ambient</span><span class="p">,</span> <span class="s2">"ambient"</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+    <span class="nx">findAndSetSingleValueParameter</span><span class="p">(</span><span class="nx">segment</span><span class="p">,</span> <span class="nx">diffuse</span><span class="p">,</span> <span class="s2">"diffuse"</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+    <span class="nx">findAndSetSingleValueParameter</span><span class="p">(</span><span class="nx">segment</span><span class="p">,</span> <span class="nx">specular</span><span class="p">,</span> <span class="s2">"specular"</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+    <span class="nx">findAndSetSingleValueParameter</span><span class="p">(</span><span class="nx">segment</span><span class="p">,</span> <span class="nx">reflection</span><span class="p">,</span> <span class="s2">"reflection"</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+    <span class="nx">findAndSetSingleValueParameter</span><span class="p">(</span><span class="nx">segment</span><span class="p">,</span> <span class="nx">roughness</span><span class="p">,</span> <span class="s2">"roughness"</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+    <span class="nx">findAndSetSingleValueParameter</span><span class="p">(</span><span class="nx">segment</span><span class="p">,</span> <span class="nx">metallic</span><span class="p">,</span> <span class="s2">"metallic"</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+    <span class="nx">findAndSetSingleValueParameter</span><span class="p">(</span><span class="nx">segment</span><span class="p">,</span> <span class="nx">ior</span><span class="p">,</span> <span class="s2">"ior"</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+    <span class="nx">inverseModelMatrix</span> <span class="o">=</span> <span class="nx">calculateInverseModelMatrix</span><span class="p">(</span><span class="nx">segment</span><span class="p">);</span>
+
+    <span class="nx">shared_ptr</span><span class="o">&lt;</span><span class="nx">Sphere</span><span class="o">&gt;</span> <span class="nx">sphere</span><span class="p">;</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nx">hasFilter</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">sphere</span> <span class="o">=</span> <span class="nx">make_shared</span><span class="o">&lt;</span><span class="nx">Sphere</span><span class="o">&gt;</span><span class="p">(</span><span class="nx">ID</span><span class="p">,</span> <span class="nx">center</span><span class="p">,</span> <span class="nx">radius</span><span class="p">,</span> <span class="nx">vec3</span><span class="p">(</span><span class="nx">rgbf</span><span class="p">),</span> <span class="nx">ambient</span><span class="p">,</span> <span class="nx">diffuse</span><span class="p">,</span>
+                                     <span class="nx">specular</span><span class="p">,</span> <span class="nx">reflection</span><span class="p">,</span> <span class="nx">rgbf</span><span class="p">.</span><span class="nx">w</span><span class="p">,</span> <span class="nx">roughness</span><span class="p">,</span> <span class="nx">metallic</span><span class="p">,</span>
+                                     <span class="nx">ior</span><span class="p">,</span> <span class="nx">inverseModelMatrix</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">else</span> <span class="p">{</span>
+        <span class="nx">sphere</span> <span class="o">=</span> <span class="nx">make_shared</span><span class="o">&lt;</span><span class="nx">Sphere</span><span class="o">&gt;</span><span class="p">(</span><span class="nx">ID</span><span class="p">,</span> <span class="nx">center</span><span class="p">,</span> <span class="nx">radius</span><span class="p">,</span> <span class="nx">color</span><span class="p">,</span> <span class="nx">ambient</span><span class="p">,</span> <span class="nx">diffuse</span><span class="p">,</span> <span class="nx">specular</span><span class="p">,</span>
+                                     <span class="nx">reflection</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="nx">roughness</span><span class="p">,</span> <span class="nx">metallic</span><span class="p">,</span> <span class="nx">ior</span><span class="p">,</span> <span class="nx">inverseModelMatrix</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="nx">BVH</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">nonPlanes</span><span class="p">.</span><span class="nx">push_back</span><span class="p">(</span><span class="nx">sphere</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">else</span> <span class="p">{</span>
+        <span class="nx">objects</span><span class="p">.</span><span class="nx">push_back</span><span class="p">(</span><span class="nx">sphere</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<h2 id="general-info">General Info</h2>
+
+<h3 id="parsing">Parsing</h3>
+<p>Parses Camera, Lights, Spheres, Boxes, Planes, and Triangles correctly. Comments are ignored. Object transforms manipulate the object properly, provided all transforms are given consecutively.</p>
+
+<h3 id="rendering">Rendering</h3>
+<p>Images can render with either Blinn-Phong and Cook-Torrance. Reflectance and Refraction are functioning properly. Schlick’s Approximation, Beer’s Law, anti-aliasing, global illumination, and ambient occlusion are implemented.</p>
+
+<h3 id="spatial-data-structure">Spatial Data Structure</h3>
+<p>Bounding Volume Hierarchy is implemented.</p>
+
+
+      <footer class="site-footer">
+
+          <span class="site-footer-owner"><a href="https://github.com/codyrhoads/ray-tracer">ray-tracer</a> is maintained by <a href="https://github.com/codyrhoads">codyrhoads</a>.</span>
+
+        <span class="site-footer-credits">This page was generated by <a href="https://pages.github.com">GitHub Pages</a>.</span>
+      </footer>
+    </section>
+
+
+  </body>
+</html>
