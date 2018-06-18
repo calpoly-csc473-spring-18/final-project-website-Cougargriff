@@ -17,7 +17,7 @@
 
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#157878">
-    <link rel="stylesheet" href="/raytracer-Cougargriff/assets/css/style.css?v=567788f8973c25961b629fb19e9b1c0644fc668e">
+    <link rel="stylesheet" href="/raytracer-Cougargriff/assets/css/style.css?v=48405354c65f38608abc867361754a07ccd5045f">
   </head>
   <body>
     <section class="page-header">
@@ -37,6 +37,8 @@
 <p>Soft shadows are rendered by representing light as a given area rather than a point light. Once an intersection point is found, N randomly sampled rays are cast to the light source and the corresponding light intensity is averaged over all N samples.</p>
 
 <p>In my implementation the # of samples is hard-coded, however, the light radius can be adjusted via the flag -softshadows=R, where R is the radius of the light.</p>
+
+<p>Once I’ve calculated how much light from the arealight is visible, I multiple the % by the light intensity for that specific pixel’s shading calculations.</p>
 
 <p>Here are some sample images with varying light radius’s</p>
 <h3 id="light-radius-1">Light Radius 1</h3>
@@ -61,6 +63,133 @@
 
 <h3 id="light-radius-100-simplepov">Light Radius 100 Simple.pov</h3>
 <p><img src="/raytracer-Cougargriff/Simple/simple100.png" alt="alt text" /></p>
+
+<h2 id="good-code-design">Good Code Design</h2>
+
+<h3 id="arealighthpp">AreaLight.hpp</h3>
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">AreaLight</span>
+<span class="p">{</span>
+    <span class="k">public</span><span class="o">:</span>
+        <span class="c1">//CONSTRUCTOR
+</span>        <span class="n">AreaLight</span><span class="p">(</span><span class="kt">float</span> <span class="n">radius</span><span class="p">,</span> <span class="n">Light</span> <span class="o">*</span> <span class="n">l</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="k">this</span><span class="o">-&gt;</span><span class="n">radius</span> <span class="o">=</span> <span class="n">radius</span><span class="p">;</span>
+            <span class="n">light</span> <span class="o">=</span> <span class="n">l</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="kt">float</span> <span class="n">calculateLitness</span><span class="p">(</span><span class="n">glm</span><span class="o">::</span><span class="n">vec3</span> <span class="n">intersection_pnt</span><span class="p">,</span> <span class="n">PixelContext</span><span class="o">::</span><span class="n">Iteration</span> <span class="o">*</span> <span class="n">contextIteration</span><span class="p">,</span>  <span class="n">Scene</span> <span class="o">*</span> <span class="n">scene</span><span class="p">);</span>
+        <span class="n">Light</span> <span class="o">*</span> <span class="n">getLight</span><span class="p">(){</span><span class="k">return</span> <span class="n">light</span><span class="p">;}</span>
+        <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">glm</span><span class="o">::</span><span class="n">vec4</span><span class="o">&gt;</span> <span class="n">getLightPoints</span><span class="p">(){</span><span class="k">return</span> <span class="n">light_points</span><span class="p">;}</span> <span class="c1">// Gets light points from last calculateLitness call
+</span>
+    <span class="k">private</span><span class="o">:</span>
+        <span class="kt">void</span> <span class="n">calculateLightPoints</span><span class="p">(</span><span class="n">glm</span><span class="o">::</span><span class="n">vec3</span> <span class="n">pnt</span><span class="p">);</span>
+        <span class="kt">void</span> <span class="n">setJitters</span><span class="p">();</span>
+        <span class="kt">void</span> <span class="n">clearJitters</span><span class="p">();</span>
+
+        <span class="n">Light</span> <span class="o">*</span> <span class="n">light</span><span class="p">;</span>
+        <span class="kt">float</span> <span class="n">radius</span><span class="p">;</span>
+
+        <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;</span> <span class="n">r_random</span><span class="p">;</span>
+        <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;</span> <span class="n">s_random</span><span class="p">;</span>
+        <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">glm</span><span class="o">::</span><span class="n">vec4</span><span class="o">&gt;</span> <span class="n">light_points</span><span class="p">;</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<h3 id="arealightcpp">AreaLight.cpp</h3>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="nf">sampleCircle</span><span class="p">(</span><span class="kt">float</span> <span class="n">u1</span><span class="p">,</span> <span class="kt">float</span> <span class="n">u2</span><span class="p">,</span> <span class="kt">float</span> <span class="o">*</span> <span class="n">Dx</span><span class="p">,</span> <span class="kt">float</span> <span class="o">*</span> <span class="n">Dy</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="kt">float</span> <span class="n">r</span> <span class="o">=</span> <span class="n">std</span><span class="o">::</span><span class="n">sqrt</span><span class="p">(</span><span class="n">u1</span><span class="p">);</span>
+    <span class="kt">float</span> <span class="n">theta</span> <span class="o">=</span> <span class="mf">2.0</span><span class="n">f</span> <span class="o">*</span> <span class="n">M_PI</span> <span class="o">*</span> <span class="n">u2</span><span class="p">;</span>
+
+    <span class="o">*</span><span class="n">Dx</span> <span class="o">=</span> <span class="n">r</span> <span class="o">*</span> <span class="n">std</span><span class="o">::</span><span class="n">cosf</span><span class="p">(</span><span class="n">theta</span><span class="p">);</span>
+    <span class="o">*</span><span class="n">Dy</span> <span class="o">=</span> <span class="n">r</span> <span class="o">*</span> <span class="n">std</span><span class="o">::</span><span class="n">sinf</span><span class="p">(</span><span class="n">theta</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">float</span> <span class="n">AreaLight</span><span class="o">::</span><span class="n">calculateLitness</span><span class="p">(</span><span class="n">glm</span><span class="o">::</span><span class="n">vec3</span> <span class="n">intersection_pnt</span><span class="p">,</span> <span class="n">PixelContext</span><span class="o">::</span><span class="n">Iteration</span> <span class="o">*</span> <span class="n">contextIteration</span><span class="p">,</span> <span class="n">Scene</span> <span class="o">*</span> <span class="n">scene</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">calculateLightPoints</span><span class="p">(</span><span class="n">intersection_pnt</span><span class="p">);</span>
+    <span class="kt">float</span> <span class="n">VS</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">;</span>
+    
+    <span class="k">for</span><span class="p">(</span><span class="n">glm</span><span class="o">::</span><span class="n">vec4</span> <span class="n">light_point</span> <span class="o">:</span> <span class="n">light_points</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="kt">bool</span> <span class="n">inShadow</span> <span class="o">=</span> <span class="n">scene</span><span class="o">-&gt;</span><span class="n">IsLightOccluded</span><span class="p">(</span><span class="n">intersection_pnt</span><span class="p">,</span> <span class="n">light_point</span><span class="p">,</span> <span class="n">contextIteration</span><span class="p">);</span>
+
+        <span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">inShadow</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="n">VS</span> <span class="o">+=</span> <span class="mf">1.0</span><span class="n">f</span> <span class="o">/</span> <span class="n">SAMPLE_NUM</span><span class="p">;</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">VS</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="n">AreaLight</span><span class="o">::</span><span class="n">setJitters</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">SAMPLE_NUM</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="kt">float</span> <span class="n">r</span> <span class="o">=</span> <span class="p">(</span><span class="kt">float</span><span class="p">)</span> <span class="n">rand</span><span class="p">()</span> <span class="o">/</span> <span class="n">RAND_MAX</span><span class="p">;</span>
+        <span class="kt">float</span> <span class="n">s</span> <span class="o">=</span> <span class="p">(</span><span class="kt">float</span><span class="p">)</span> <span class="n">rand</span><span class="p">()</span> <span class="o">/</span> <span class="n">RAND_MAX</span><span class="p">;</span>
+
+        <span class="n">r_random</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">r</span><span class="p">);</span>
+        <span class="n">s_random</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">s</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="n">std</span><span class="o">::</span><span class="n">random_shuffle</span><span class="p">(</span><span class="n">s_random</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span> <span class="n">s_random</span><span class="p">.</span><span class="n">end</span><span class="p">());</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="n">AreaLight</span><span class="o">::</span><span class="n">clearJitters</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="n">r_random</span><span class="p">.</span><span class="n">clear</span><span class="p">();</span>
+    <span class="n">s_random</span><span class="p">.</span><span class="n">clear</span><span class="p">();</span>
+    <span class="n">light_points</span><span class="p">.</span><span class="n">clear</span><span class="p">();</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="n">AreaLight</span><span class="o">::</span><span class="n">calculateLightPoints</span><span class="p">(</span><span class="n">glm</span><span class="o">::</span><span class="n">vec3</span> <span class="n">pnt</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">clearJitters</span><span class="p">();</span>
+    <span class="n">setJitters</span><span class="p">();</span>
+    
+    <span class="c1">// r[] and s[] should be populated w/ values [0,1] at this point in time
+</span>
+    <span class="n">glm</span><span class="o">::</span><span class="n">vec4</span> <span class="n">point</span> <span class="o">=</span> <span class="n">glm</span><span class="o">::</span><span class="n">vec4</span><span class="p">(</span><span class="n">pnt</span><span class="p">.</span><span class="n">x</span><span class="p">,</span> <span class="n">pnt</span><span class="p">.</span><span class="n">y</span><span class="p">,</span> <span class="n">pnt</span><span class="p">.</span><span class="n">z</span><span class="p">,</span> <span class="mf">1.</span><span class="n">f</span><span class="p">);</span>
+
+    <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">SAMPLE_NUM</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="kt">float</span> <span class="n">u1</span><span class="p">,</span> <span class="n">u2</span><span class="p">,</span> <span class="n">dx</span><span class="p">,</span> <span class="n">dy</span><span class="p">;</span>
+        <span class="n">u1</span> <span class="o">=</span> <span class="n">r_random</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+        <span class="n">u2</span> <span class="o">=</span> <span class="n">s_random</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+
+        <span class="n">sampleCircle</span><span class="p">(</span><span class="n">u1</span><span class="p">,</span> <span class="n">u2</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">dx</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">dy</span><span class="p">);</span>
+
+        <span class="c1">// new untransformed random sampled point at origin
+</span>        <span class="n">glm</span><span class="o">::</span><span class="n">vec4</span> <span class="n">new_point</span><span class="p">(</span><span class="n">dx</span> <span class="o">*</span> <span class="n">radius</span><span class="p">,</span> <span class="n">dy</span> <span class="o">*</span> <span class="n">radius</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span>
+
+        <span class="n">glm</span><span class="o">::</span><span class="n">mat4</span> <span class="n">transform</span> <span class="o">=</span> <span class="n">glm</span><span class="o">::</span><span class="n">mat4</span><span class="p">(</span><span class="mf">1.</span><span class="n">f</span><span class="p">);</span>
+        
+        <span class="c1">// TRANSLATION TRANSFORM
+</span>        <span class="n">glm</span><span class="o">::</span><span class="n">mat4</span> <span class="n">translation</span><span class="p">(</span><span class="mf">1.</span><span class="n">f</span><span class="p">);</span>
+        <span class="n">translation</span> <span class="o">=</span> <span class="n">glm</span><span class="o">::</span><span class="n">translate</span><span class="p">(</span><span class="n">glm</span><span class="o">::</span><span class="n">mat4</span><span class="p">(</span><span class="mf">1.</span><span class="n">f</span><span class="p">),</span> <span class="n">light</span><span class="o">-&gt;</span><span class="n">position</span><span class="p">)</span> <span class="o">*</span> <span class="n">translation</span><span class="p">;</span>
+
+        <span class="c1">// ROTATE TO NEW NORMAL TRANSFORM
+</span>        <span class="n">glm</span><span class="o">::</span><span class="n">mat4</span> <span class="n">rotation</span><span class="p">(</span><span class="mf">1.</span><span class="n">f</span><span class="p">);</span>
+        <span class="n">rotation</span> <span class="o">=</span> <span class="n">glm</span><span class="o">::</span><span class="n">lookAt</span><span class="p">(</span><span class="n">pnt</span><span class="p">,</span> <span class="n">light</span><span class="o">-&gt;</span><span class="n">position</span><span class="p">,</span> <span class="n">glm</span><span class="o">::</span><span class="n">vec3</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">));</span>
+
+        <span class="c1">// FINALIZE
+</span>        <span class="n">transform</span> <span class="o">*=</span> <span class="n">translation</span> <span class="o">*</span> <span class="n">rotation</span><span class="p">;</span>
+        <span class="n">new_point</span> <span class="o">=</span> <span class="n">transform</span> <span class="o">*</span> <span class="n">new_point</span><span class="p">;</span>
+
+        <span class="n">light_points</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">new_point</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+<p>Looking at my code you can see that I created a class to hold the interior logic surrounding the area light used to implement soft shadows. Functions like <code class="highlighter-rouge">float calculateLitness(glm::vec3, PixelContext::Iteration *,  Scene *);</code>are declared public to be called from the main casting loop while interior functions like <code class="highlighter-rouge">void calculateLightPoints(glm::vec3);</code> are made private to the class. This encapsulation ensures that the light points will only change from within the class function calls.</p>
+
+<p>I also made sure to decompose the class member functions as much as possible. Instead of throwing everything into <code class="highlighter-rouge">float calculateLitness(glm::vec3, PixelContext::Iteration *,  Scene *);</code> I created private methods like I mentioned above to break the code down into smaller functions that are easier to write and maintain. Examples of these functions include <code class="highlighter-rouge">void AreaLight::setJitters()</code>, <code class="highlighter-rouge">void sampleCircle(float u1, float u2, float * Dx, float * Dy)</code> and <code class="highlighter-rouge">void AreaLight::calculateLightPoints(glm::vec3 pnt)</code>.</p>
+
+<h2 id="references">References</h2>
+
+<p>I couldn’t find many helpful resources with regard to Soft Shadow implementations. At least none that were more helpful than the slide decks that you provided on your magnificent site.</p>
+
+<p>With that said, I stuck to your slide deck implementation wise.</p>
 
 
 
